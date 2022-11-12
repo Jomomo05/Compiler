@@ -1,0 +1,27 @@
+main{
+    INT i = 5;
+    INT j = 7;
+    MATRIX m1 = [1,2,3,4;5,6,7,8;9,10,11,12;9,10,11,12];
+    MATRIX m2 = [1,2,3,4;5,6,7,8;9,10,11,12;9,10,11,12];
+    MATRIX m3 = [1,2,3,4;5,6,7,8;9,10,11,12;9,10,11,12];
+    MATRIX m4,m5;
+    m4 = [1,2,3,4;5,6,7,8;9,10,11,12];
+    m5 = [1,2,3,4;5,6,7,8;24,10,11,12];
+    WRITE i;
+    WRITE j;
+    WRITE m1;
+    WRITE m4;
+    WRITE m5;
+    WRITE m1 * m2;
+    WRITE m1 - m2;
+    WRITE m1 / m2;
+    WRITE m1 + m2;
+    WRITE m1^ + m2^; 
+    WRITE m1^ - m2; 
+    WRITE m1 / m2^; 
+    WRITE m1^ * m2^; 
+    MATRIX m7 = m1^ * m2;
+    MATRIX m8 = m1^ / m2^;
+    MATRIX m9 = m1 * m2;
+    WRITE m10;
+}

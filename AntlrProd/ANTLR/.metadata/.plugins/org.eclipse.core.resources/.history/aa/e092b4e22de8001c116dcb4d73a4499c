@@ -1,0 +1,719 @@
+package expression;
+
+import java.util.List;
+import java.util.Map;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import org.antlr.v4.runtime.Token;
+
+import antlr.YaulBaseVisitor;
+import antlr.YaulParser.AlreadyDeclaredIntContext;
+import antlr.YaulParser.AlreadyDeclaredMatrixContext;
+import antlr.YaulParser.DeclarationContext;
+import antlr.YaulParser.DeclarationEmptyIntContext;
+import antlr.YaulParser.DeclarationEmptyMatrixContext;
+import antlr.YaulParser.DeclarationMatrixContext;
+import antlr.YaulParser.TransposedMatrixDeclarationContext;
+import antlr.YaulParser.VariableContext;
+import antlr.YaulParser.VariableDeclarationExprAdditionContext;
+import antlr.YaulParser.VariableDeclarationExprMultContext;
+import antlr.YaulParser.VariableDeclarationExprSubtractionContext;
+import antlr.YaulParser.VariableDeclarationExprivisionContext;
+import antlr.YaulParser.WriteAdditionContext;
+import antlr.YaulParser.WriteAdditionTransposedContext;
+import antlr.YaulParser.WriteDivisionContext;
+import antlr.YaulParser.WriteDivisionTransposedContext;
+import antlr.YaulParser.WriteMultiplicationContext;
+import antlr.YaulParser.WriteMultiplicationTransposedContext;
+import antlr.YaulParser.WriteNumberContext;
+import antlr.YaulParser.WriteSubtractionContext;
+import antlr.YaulParser.WriteSubtractionTransposedContext;
+import antlr.YaulParser.WriteTransposedMatrixContext;
+import antlr.YaulParser.WriteVariableContext;
+
+
+public class AntlrToExpression extends YaulBaseVisitor<Expression> {
+
+	private List<String> vars;
+	private List<String> semanticErrors;
+	private ExpressionToJava fileManipulator;
+	private Map<String, String> variableTypes;
+	
+	public AntlrToExpression(List<String> semanticErrors, ExpressionToJava fileManipulator) {
+		variableTypes = new HashMap<>();
+		vars = new ArrayList<>();
+		this.semanticErrors = semanticErrors;
+		this.fileManipulator = fileManipulator;
+	}
+	
+	private static int countOccurences(String someString, char searchedChar, int index) {
+		if (index >= someString.length()) {
+			return 0;
+		}
+			    
+		int count = someString.charAt(index) == searchedChar ? 1 : 0;
+		return count + countOccurences(someString, searchedChar, index + 1);
+	}
+	
+	@Override
+	public Expression visitDeclaration(DeclarationContext ctx) {
+		String id = ctx.getChild(1).getText();
+		String type = ctx.getChild(0).getText();
+		Token idToken = ctx.ID().getSymbol();
+		int line = idToken.getLine();
+		int column = idToken.getCharPositionInLine()+1;
+		int value = Integer.parseInt(ctx.NUM().getText());
+		
+		if(vars.contains(id)) {
+			String semanticErrorString = "Semantic Error: variable " + id + " already declared (" + line + ", " + column + ")";
+			if(semanticErrors.contains(semanticErrorString)) {} else {
+				semanticErrors.add(semanticErrorString);
+			}
+		} else {
+			vars.add(id);
+		}
+		
+		fileManipulator.addLinesToJava(type.toString().toLowerCase() + " " + id.toString() + " = " + value + ";");
+		variableTypes.put(id, type);
+		return super.visitDeclaration(ctx);
+	}
+
+	@Override
+	public Expression visitVariable(VariableContext ctx) {
+		String id = ctx.ID().getText();
+		Token idToken = ctx.ID().getSymbol();
+		int line = idToken.getLine();
+		int column = idToken.getCharPositionInLine()+1;
+		
+		if(!vars.contains(id)) {
+			String semanticErrorString = "Semantic Error: variable " + id + " is not declared (" + line + ", " + column + ")";
+			if(semanticErrors.contains(semanticErrorString)) {
+				
+			} else {
+				semanticErrors.add(semanticErrorString);
+			}
+		}
+
+		return new Variable(id);
+	}
+
+	@Override
+	public Expression visitDeclarationMatrix(DeclarationMatrixContext ctx) {
+		List<Integer> splitedMatrixContent_comma = new ArrayList<Integer>();
+		Token idToken = ctx.ID().getSymbol();
+		String matrixContent = ctx.MATRIX().getText().replaceAll("\\]","").replaceAll("\\[","");
+		String generatedMatrix = "{ ";
+		String id = ctx.getChild(1).getText();
+		String type = ctx.getChild(0).getText();
+		String[] splitedMatrixContent = matrixContent.split(";");
+		int line = idToken.getLine();
+		int column = idToken.getCharPositionInLine()+1;
+		
+		for(int i = 0; i < splitedMatrixContent.length; i++) {
+			splitedMatrixContent_comma.add(countOccurences(splitedMatrixContent[i], ',', 0));
+			if(i == splitedMatrixContent.length - 1) {
+				generatedMatrix = generatedMatrix + "{" + splitedMatrixContent[i] + "}";
+			}
+			else {
+				generatedMatrix = generatedMatrix + "{" + splitedMatrixContent[i] + "}, ";
+			}
+		}
+		
+		generatedMatrix = generatedMatrix + " }" ;
+		
+		boolean hasErrors = false;
+		for(int i = 1; i < splitedMatrixContent_comma.size(); i++) {
+			if(splitedMatrixContent_comma.get(0) != splitedMatrixContent_comma.get(i)) {
+				String semanticErrorString = ("Semantic Error: Matrix size of " + id + " is not valid (" + line + ", " + column + ")");
+				hasErrors = true;
+				if(semanticErrors.contains(semanticErrorString)) {} else {
+					semanticErrors.add(semanticErrorString);
+					hasErrors = true;
+				}
+			}
+		}
+		if(vars.contains(id)) {
+			String semanticErrorString = "Semantic Error: variable " + id + " already declared (" + line + ", " + column + ")";
+			if(semanticErrors.contains(semanticErrorString)) {} else {
+				semanticErrors.add(semanticErrorString);
+				hasErrors = true;
+			}
+		} else {
+			vars.add(id);
+		}
+		if(!hasErrors) {
+			int[][] value = new int[splitedMatrixContent_comma.size()][splitedMatrixContent_comma.get(0)+1];
+			for(int i = 0; i < splitedMatrixContent_comma.size(); i++) {
+				String[] splitedResult = splitedMatrixContent[i].split(",");
+				value[i][0] = Integer.parseInt(splitedResult[0]);
+				for(int j = 1; j < splitedMatrixContent_comma.get(0)+1 ; j++) {
+					value[i][j] = Integer.parseInt(splitedResult[j]);
+				}
+			}
+			variableTypes.put(id, type);
+			fileManipulator.addLinesToJava("int[][] " + id.toString() + " = " + generatedMatrix + ";");
+		}
+		int[][] value = {{1,1}};
+		variableTypes.put(id, type);
+		return new VariableDeclaration<>(id, type, value);
+	}
+
+	@Override
+	public Expression visitWriteVariable(WriteVariableContext ctx) {
+		Token idToken = ctx.ID().getSymbol();
+		int line = idToken.getLine();
+		int column = idToken.getCharPositionInLine()+1;
+		
+		String id = ctx.ID().getText();
+		
+		if(!vars.contains(id)) {
+			String semanticErrorString = "Semantic Error: variable " + id + " is not declared (" + line + ", " + column + ")";
+			if(semanticErrors.contains(semanticErrorString)) {
+				
+			} else {
+				semanticErrors.add(semanticErrorString);
+			}
+		}
+		
+		if(variableTypes.get(id.toString()).equals("MATRIX")) {
+			fileManipulator.addLinesToJava("writeMatrix(" + id + ");");	
+		} else {
+			fileManipulator.addLinesToJava("System.out.println(" + id + ");");
+		}
+		return super.visitWriteVariable(ctx);
+		
+	}
+	
+	@Override
+	public Expression visitWriteAddition(WriteAdditionContext ctx) {
+		Expression left = visit(ctx.getChild(1));
+		Expression right = visit(ctx.getChild(3));
+		fileManipulator.addLinesToJava("writeMatrix(matrixSum(" + left + ", " + right + "));");
+		return super.visitWriteAddition(ctx);
+	}
+
+	@Override
+	public Expression visitWriteMultiplication(WriteMultiplicationContext ctx) {
+		Expression left = visit(ctx.getChild(1));
+		Expression right = visit(ctx.getChild(3));
+
+		fileManipulator.addLinesToJava("writeMatrix(matrixMult(" + left + ", " + right + "));");
+		return super.visitWriteMultiplication(ctx);
+	}
+	
+	@Override
+	public Expression visitWriteDivision(WriteDivisionContext ctx) {
+		Expression left = visit(ctx.getChild(1));
+		Expression right = visit(ctx.getChild(3));
+		fileManipulator.addLinesToJava("writeMatrix(matrixDiv(" + left + ", " + right + "));");
+		return super.visitWriteDivision(ctx);
+	}
+
+	@Override
+	public Expression visitWriteSubtraction(WriteSubtractionContext ctx) {
+		Expression left = visit(ctx.getChild(1));
+		Expression right = visit(ctx.getChild(3));
+		fileManipulator.addLinesToJava("writeMatrix(matrixSub(" + left + ", " + right + "));");
+		return super.visitWriteSubtraction(ctx);
+	}
+
+	@Override
+	public Expression visitWriteNumber(WriteNumberContext ctx) {
+		String numText = ctx.getChild(1).getText();
+		int num = Integer.parseInt(numText);
+		fileManipulator.addLinesToJava("System.out.println(" + num + ");");
+		return super.visitWriteNumber(ctx);
+	}
+
+	@Override
+	public Expression visitDeclarationEmptyMatrix(DeclarationEmptyMatrixContext ctx) {
+		List<VariableDeclaration<?>> variablelist = new ArrayList<>();
+		String cleanvariables = ctx.getText().replaceAll("MATRIX","").replaceAll(";", "");
+		String[] splitedVariables = cleanvariables.split(",");
+		
+		for(int i = 0; i < splitedVariables.length; i++) {
+			String id = splitedVariables[i];
+			String type = ctx.getChild(0).getText();
+			int[][] value = new int[0][0];
+			
+			fileManipulator.addLinesToJava("int[][] " + id + ";");
+			
+			if(vars.contains(id)) {
+				semanticErrors.add("Semantic Error: variable " + id + " already declared");
+			} else {
+				vars.add(id);
+			}
+			variableTypes.put(id, type);
+			variablelist.add(new VariableDeclaration<>(id, type, value));
+		}
+		return new MultipleEmptyMatrixDeclaration(variablelist);
+	}
+
+	@Override
+	public Expression visitAlreadyDeclaredMatrix(AlreadyDeclaredMatrixContext ctx) {
+		Token idToken = ctx.ID().getSymbol();
+		int line = idToken.getLine();
+		int column = idToken.getCharPositionInLine()+1;
+		
+		String matrixContent = ctx.MATRIX().getText().replaceAll("\\]","").replaceAll("\\[","");
+		String[] splitedMatrixContent = matrixContent.split(";");
+		List<Integer> splitedMatrixContent_comma = new ArrayList<Integer>();
+		
+		String generatedMatrix = "{ ";
+		
+		for(int i = 0; i < splitedMatrixContent.length; i++) {
+			splitedMatrixContent_comma.add(countOccurences(splitedMatrixContent[i], ',', 0));
+			if(i == splitedMatrixContent.length - 1) {
+				generatedMatrix = generatedMatrix + "{" + splitedMatrixContent[i] + "}";
+			}
+			else {
+				generatedMatrix = generatedMatrix + "{" + splitedMatrixContent[i] + "}, ";
+			}
+		}
+		
+		generatedMatrix = generatedMatrix + " }" ;
+		
+		for(int i = 1; i < splitedMatrixContent_comma.size(); i++) {
+			String id = ctx.getChild(0).getText();
+			if(splitedMatrixContent_comma.get(0) != splitedMatrixContent_comma.get(i)) {
+				semanticErrors.add("Semantic Error: Matrix size of " + id + " is not valid (" + line + ", " + column + ")");
+			}
+		}
+		
+		String id = ctx.getChild(0).getText();
+		
+		if(!vars.contains(id)) {
+			String semanticErrorString = "Semantic Error: variable " + id + " is not declared (" + line + ", " + column + ")";
+			if(semanticErrors.contains(semanticErrorString)) {
+				
+			} else {
+				semanticErrors.add(semanticErrorString);
+			}
+		}
+		
+		int[][] value = new int[splitedMatrixContent_comma.size()][splitedMatrixContent_comma.get(0)+1];
+		for(int i = 0; i < splitedMatrixContent_comma.size(); i++) {
+			String[] splitedResult = splitedMatrixContent[i].split(",");
+			value[i][0] = Integer.parseInt(splitedResult[0]);
+			for(int j = 1; j < splitedMatrixContent_comma.get(0)+1 ; j++) {
+				value[i][j] = Integer.parseInt(splitedResult[j]);
+				
+			}
+		}
+		
+		fileManipulator.addLinesToJava(id + " = new int[][]" + generatedMatrix + ";");
+		return super.visitAlreadyDeclaredMatrix(ctx);
+	}
+
+	@Override
+	public Expression visitDeclarationEmptyInt(DeclarationEmptyIntContext ctx) {
+		List<VariableDeclaration<?>> variablelist = new ArrayList<>();
+		
+		String cleanvariables = ctx.getText().replaceAll("INT","").replaceAll(";", "");
+		
+		String[] splitedVariables = cleanvariables.split(",");
+		
+		for(int i = 0; i < splitedVariables.length; i++) {
+			String id = splitedVariables[i];
+			String type = ctx.getChild(0).getText();
+			int value = 0;
+			
+			fileManipulator.addLinesToJava("int " + id + ";");
+			
+			if(vars.contains(id)) {
+				String semanticErrorString = "Semantic Error: variable " + id + " already declared";
+				if(semanticErrors.contains(semanticErrorString)) {
+					
+				} else {
+					semanticErrors.add(semanticErrorString);
+				}
+			} else {
+				vars.add(id);
+			}
+			variablelist.add(new VariableDeclaration<>(id, type, value));
+		}
+		return super.visitDeclarationEmptyInt(ctx);
+	}
+
+	@Override
+	public Expression visitAlreadyDeclaredInt(AlreadyDeclaredIntContext ctx) {
+		Token idToken = ctx.ID().getSymbol();
+		int line = idToken.getLine();
+		int column = idToken.getCharPositionInLine()+1;
+		
+		String id = ctx.getChild(0).getText();
+
+		String type = ctx.getChild(0).getText();
+		int value = Integer.parseInt(ctx.NUM().getText());
+		if(!vars.contains(id)) {
+			String semanticErrorString = "Semantic Error: variable " + id + " is not declared (" + line + ", " + column + ")";
+			if(semanticErrors.contains(semanticErrorString)) {
+				
+			} else {
+				semanticErrors.add(semanticErrorString);
+			}
+		}
+		fileManipulator.addLinesToJava(id + " " + value + ";");
+		return new VariableDeclaration<>(id, type, value);
+	}
+
+	@Override
+	public Expression visitTransposedMatrixDeclaration(TransposedMatrixDeclarationContext ctx) {
+		
+		return super.visitTransposedMatrixDeclaration(ctx);
+	}
+
+	@Override
+	public Expression visitVariableDeclarationExprMult(VariableDeclarationExprMultContext ctx) {
+		String left = ctx.getChild(3).getText() + ctx.getChild(4).getText();
+		String right;
+		if(left.contains("^")){
+			right = ctx.getChild(6).getText() + ctx.getChild(7).getText();
+		} else {
+			right = ctx.getChild(5).getText() + ctx.getChild(6).getText();
+		}
+		String id = ctx.getChild(1).getText();
+		String textleft = null;
+		String textright = null;
+		
+		if(left.contains("^")) {
+			for(int i = 3; i < 5; i++) {
+				if(ctx.getChild(i).getText().equals("^")) {
+					textleft = "matrixTranspose(" + ctx.getChild(i-1).getText() + ")";
+				}
+			}
+		} else {
+			for(int i = 3; i < 5; i++) {
+				if(ctx.getChild(i).getText() != "^") {
+					textleft = ctx.getChild(i-1).getText();
+				}
+			}
+		}
+		if(right.contains("^")) {
+			for(int i = 5; i < ctx.getChildCount(); i++) {
+				if(ctx.getChild(i).getText().equals("^")) {
+					textright = "matrixTranspose(" + ctx.getChild(i-1).getText() + ")";
+				}
+			}
+		} else {
+			for(int i = 5; i < ctx.getChildCount(); i++) {
+				if(ctx.getChild(i).getText() != "^") {
+					if(ctx.getChildCount() == 9) {
+						textright = ctx.getChild(i-2).getText();
+					} else {
+						textright = ctx.getChild(i-1).getText();
+					}
+				}
+			}
+		}
+		
+		fileManipulator.addLinesToJava("int[][] " + id + " = matrixMult(" + textleft + ", " + textright + ");");
+		return super.visitVariableDeclarationExprMult(ctx);
+	}
+
+	@Override
+	public Expression visitVariableDeclarationExprivision(VariableDeclarationExprivisionContext ctx) {
+		String left = ctx.getChild(3).getText() + ctx.getChild(4).getText();
+		String right;
+		if(left.contains("^")){
+			right = ctx.getChild(6).getText() + ctx.getChild(7).getText();
+		} else {
+			right = ctx.getChild(5).getText() + ctx.getChild(6).getText();
+		}
+		String id = ctx.getChild(1).getText();
+		String textleft = null;
+		String textright = null;
+		
+		if(left.contains("^")) {
+			for(int i = 3; i < 5; i++) {
+				if(ctx.getChild(i).getText().equals("^")) {
+					textleft = "matrixTranspose(" + ctx.getChild(i-1).getText() + ")";
+				}
+			}
+		} else {
+			for(int i = 3; i < 5; i++) {
+				if(ctx.getChild(i).getText() != "^") {
+					textleft = ctx.getChild(i-1).getText();
+				}
+			}
+		}
+		if(right.contains("^")) {
+			for(int i = 5; i < ctx.getChildCount(); i++) {
+				if(ctx.getChild(i).getText().equals("^")) {
+					textright = "matrixTranspose(" + ctx.getChild(i-1).getText() + ")";
+				}
+			}
+		} else {
+			for(int i = 5; i < ctx.getChildCount(); i++) {
+				if(ctx.getChild(i).getText() != "^") {
+					if(ctx.getChildCount() == 9) {
+						textright = ctx.getChild(i-2).getText();
+					} else {
+						textright = ctx.getChild(i-1).getText();
+					}
+				}
+			}
+		}
+		
+		fileManipulator.addLinesToJava("int[][] " + id + " = matrixDiv(" + textleft + ", " + textright + ");");
+		return super.visitVariableDeclarationExprivision(ctx);
+	}
+
+	@Override
+	public Expression visitVariableDeclarationExprAddition(VariableDeclarationExprAdditionContext ctx) {
+		String left = ctx.getChild(3).getText() + ctx.getChild(4).getText();
+		String right;
+		if(left.contains("^")){
+			right = ctx.getChild(6).getText() + ctx.getChild(7).getText();
+		} else {
+			right = ctx.getChild(5).getText() + ctx.getChild(6).getText();
+		}
+		String id = ctx.getChild(1).getText();
+		String textleft = null;
+		String textright = null;
+		
+		if(left.contains("^")) {
+			for(int i = 3; i < 5; i++) {
+				if(ctx.getChild(i).getText().equals("^")) {
+					textleft = "matrixTranspose(" + ctx.getChild(i-1).getText() + ")";
+				}
+			}
+		} else {
+			for(int i = 3; i < 5; i++) {
+				if(ctx.getChild(i).getText() != "^") {
+					textleft = ctx.getChild(i-1).getText();
+				}
+			}
+		}
+		if(right.contains("^")) {
+			for(int i = 5; i < ctx.getChildCount(); i++) {
+				if(ctx.getChild(i).getText().equals("^")) {
+					textright = "matrixTranspose(" + ctx.getChild(i-1).getText() + ")";
+				}
+			}
+		} else {
+			for(int i = 5; i < ctx.getChildCount(); i++) {
+				if(ctx.getChild(i).getText() != "^") {
+					if(ctx.getChildCount() == 9) {
+						textright = ctx.getChild(i-2).getText();
+					} else {
+						textright = ctx.getChild(i-1).getText();
+					}
+				}
+			}
+		}
+		
+		fileManipulator.addLinesToJava("int[][] " + id + " = matrixSum(" + textleft + ", " + textright + ");");
+		return super.visitVariableDeclarationExprAddition(ctx);
+	}
+
+	@Override
+	public Expression visitVariableDeclarationExprSubtraction(VariableDeclarationExprSubtractionContext ctx) {
+		String left = ctx.getChild(3).getText() + ctx.getChild(4).getText();
+		String right;
+		if(left.contains("^")){
+			right = ctx.getChild(6).getText() + ctx.getChild(7).getText();
+		} else {
+			right = ctx.getChild(5).getText() + ctx.getChild(6).getText();
+		}
+		String id = ctx.getChild(1).getText();
+		String textleft = null;
+		String textright = null;
+		
+		if(left.contains("^")) {
+			for(int i = 3; i < 5; i++) {
+				if(ctx.getChild(i).getText().equals("^")) {
+					textleft = "matrixTranspose(" + ctx.getChild(i-1).getText() + ")";
+				}
+			}
+		} else {
+			for(int i = 3; i < 5; i++) {
+				if(ctx.getChild(i).getText() != "^") {
+					textleft = ctx.getChild(i-1).getText();
+				}
+			}
+		}
+		if(right.contains("^")) {
+			for(int i = 5; i < ctx.getChildCount(); i++) {
+				if(ctx.getChild(i).getText().equals("^")) {
+					textright = "matrixTranspose(" + ctx.getChild(i-1).getText() + ")";
+				}
+			}
+		} else {
+			for(int i = 5; i < ctx.getChildCount(); i++) {
+				if(ctx.getChild(i).getText() != "^") {
+					if(ctx.getChildCount() == 9) {
+						textright = ctx.getChild(i-2).getText();
+					} else {
+						textright = ctx.getChild(i-1).getText();
+					}
+				}
+			}
+		}
+		
+		fileManipulator.addLinesToJava("int[][] " + id + " = matrixSub(" + textleft + ", " + textright + ");");
+		return super.visitVariableDeclarationExprSubtraction(ctx);
+	}
+
+	@Override
+	public Expression visitWriteMultiplicationTransposed(WriteMultiplicationTransposedContext ctx) {
+		String left = ctx.getChild(1).getText() + ctx.getChild(2).getText();
+		String right = ctx.getChild(4).getText() + ctx.getChild(5).getText();
+		String textleft = null;
+		String textright = null;
+		if(left.contains("^")) {
+			for(int i = 1; i < 3; i++) {
+				if(ctx.getChild(i).getText().equals("^")) {
+					textleft = "matrixTranspose(" + ctx.getChild(i-1).getText() + ")";
+				}
+			}
+		} else {
+			for(int i = 1; i < 3; i++) {
+				if(ctx.getChild(i).getText() != "^") {
+					textleft = ctx.getChild(i-1).getText();
+				}
+			}
+		}
+		if(right.contains("^")) {
+			for(int i = 4; i < 6; i++) {
+				if(ctx.getChild(i).getText().equals("^")) {
+					textright = "matrixTranspose(" + ctx.getChild(i-1).getText() + ")";
+				}
+			}
+		} else {
+			for(int i = 4; i < 6; i++) {
+				if(ctx.getChild(i).getText() != "^") {
+					textright = ctx.getChild(i-1).getText();
+				}
+			}
+		}
+		
+		fileManipulator.addLinesToJava("writeMatrix(matrixMult(" + textleft + ", " + textright + "));");
+		return super.visitWriteMultiplicationTransposed(ctx);
+	}
+
+	@Override
+	public Expression visitWriteDivisionTransposed(WriteDivisionTransposedContext ctx) {
+		String left = ctx.getChild(1).getText() + ctx.getChild(2).getText();
+		String right = ctx.getChild(4).getText() + ctx.getChild(5).getText();
+		String textleft = null;
+		String textright = null;
+		if(left.contains("^")) {
+			for(int i = 1; i < 3; i++) {
+				if(ctx.getChild(i).getText().equals("^")) {
+					textleft = "matrixTranspose(" + ctx.getChild(i-1).getText() + ")";
+				}
+			}
+		} else {
+			for(int i = 1; i < 3; i++) {
+				if(ctx.getChild(i).getText() != "^") {
+					textleft = ctx.getChild(i-1).getText();
+				}
+			}
+		}
+		if(right.contains("^")) {
+			for(int i = 4; i < 6; i++) {
+				if(ctx.getChild(i).getText().equals("^")) {
+					textright = "matrixTranspose(" + ctx.getChild(i-1).getText() + ")";
+				}
+			}
+		} else {
+			for(int i = 4; i < 6; i++) {
+				if(ctx.getChild(i).getText() != "^") {
+					textright = ctx.getChild(i-1).getText();
+				}
+			}
+		}
+		
+		fileManipulator.addLinesToJava("writeMatrix(matrixDiv(" + textleft + ", " + textright + "));");
+		return super.visitWriteDivisionTransposed(ctx);
+	}
+
+	@Override
+	public Expression visitWriteAdditionTransposed(WriteAdditionTransposedContext ctx) {
+		String left = ctx.getChild(1).getText() + ctx.getChild(2).getText();
+		String right = ctx.getChild(4).getText() + ctx.getChild(5).getText();
+		String textleft = null;
+		String textright = null;
+		if(left.contains("^")) {
+			for(int i = 1; i < 3; i++) {
+				if(ctx.getChild(i).getText().equals("^")) {
+					textleft = "matrixTranspose(" + ctx.getChild(i-1).getText() + ")";
+				}
+			}
+		} else {
+			for(int i = 1; i < 3; i++) {
+				if(ctx.getChild(i).getText() != "^") {
+					textleft = ctx.getChild(i-1).getText();
+				}
+			}
+		}
+		if(right.contains("^")) {
+			for(int i = 4; i < 6; i++) {
+				if(ctx.getChild(i).getText().equals("^")) {
+					textright = "matrixTranspose(" + ctx.getChild(i-1).getText() + ")";
+				}
+			}
+		} else {
+			for(int i = 4; i < 6; i++) {
+				if(ctx.getChild(i).getText() != "^") {
+					textright = ctx.getChild(i-1).getText();
+				}
+			}
+		}
+		
+		fileManipulator.addLinesToJava("writeMatrix(matrixSum(" + textleft + ", " + textright + "));");
+		
+		return super.visitWriteAdditionTransposed(ctx);
+	}
+
+	@Override
+	public Expression visitWriteSubtractionTransposed(WriteSubtractionTransposedContext ctx) {
+		String left = ctx.getChild(1).getText() + ctx.getChild(2).getText();
+		String right = ctx.getChild(4).getText() + ctx.getChild(5).getText();
+		String textleft = null;
+		String textright = null;
+		System.out.println(left);
+		if(left.contains("^")) {
+			for(int i = 1; i < 3; i++) {
+				if(ctx.getChild(i).getText().equals("^")) {
+					textleft = "matrixTranspose(" + ctx.getChild(i-1).getText() + ")";
+				}
+			}
+		} else {
+			for(int i = 1; i < 3; i++) {
+				if(ctx.getChild(i).getText() != "^") {
+					textleft = ctx.getChild(i-1).getText();
+				}
+			}
+		}
+		if(right.contains("^")) {
+			for(int i = 4; i < 6; i++) {
+				if(ctx.getChild(i).getText().equals("^")) {
+					textright = "matrixTranspose(" + ctx.getChild(i-1).getText() + ")";
+				}
+			}
+		} else {
+			for(int i = 4; i < 6; i++) {
+				if(ctx.getChild(i).getText() != "^") {
+					textright = ctx.getChild(i-1).getText();
+				}
+			}
+		}
+		
+		//variableTypes.put(id, "MATRIX");
+		fileManipulator.addLinesToJava("writeMatrix(matrixSub(" + textleft + ", " + textright + "));");
+		
+		return super.visitWriteSubtractionTransposed(ctx);
+	}
+
+	@Override
+	public Expression visitWriteTransposedMatrix(WriteTransposedMatrixContext ctx) {
+		String id = ctx.getChild(1).getText();
+		System.out.println(id);
+		fileManipulator.addLinesToJava("writeMatrix(matrixTranspose(" + id + "));");
+		return super.visitWriteTransposedMatrix(ctx);
+	}
+	
+}

@@ -1,0 +1,41 @@
+main{
+    INT i = 5;
+    INT j = 7;
+    MATRIX m1 = [1,2,3,4;5,6,7,8;9,10,11,12];
+    MATRIX m2 = [1,2,3,4;5,6,7,8;9,10,11,12];
+    MATRIX m3 = [1,2,3,4;5,6,7,8;9,10,11,12];
+    MATRIX m4,m5,m6;
+    m4 = [1,2,3,4;5,6,7,8;9,10,11,12];
+    m5 = [1,2,3,4;5,6,7,8;24,10,11,12];
+    INT xd;
+    WRITE i;
+    WRITE m1;
+    WRITE m1 * m2;
+    WRITE m1 - m2;
+    WRITE m1 / m2;
+
+    WRITE m4;
+    WRITE m5;
+    WRITE m6;
+
+    WRITE m1 + m2 * m3;
+    WRITE m1 + m2 - m3;
+    WRITE m1 + m2 + m3;
+    WRITE m1 + m2 / m3;
+
+    WRITE m1 / m2 * m3;
+    WRITE m1 / m2 - m3;
+    WRITE m1 / m2 + m3;
+    WRITE m1 / m2 / m3;
+
+    WRITE m1 * m2 * m3;
+    WRITE m1 * m2 - m3;
+    WRITE m1 * m2 + m3;
+    WRITE m1 * m2 / m3;
+
+    WRITE m1 - m2 * m3;
+    WRITE m1 - m2 - m3;
+    WRITE m1 - m2 + m3;
+    WRITE m1 - m2 / m3;
+
+}
